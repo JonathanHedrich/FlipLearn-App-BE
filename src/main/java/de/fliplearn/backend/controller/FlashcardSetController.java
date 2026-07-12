@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import de.fliplearn.backend.dto.UpdateFlashcardSetRequest;
 
 import java.util.List;
 
@@ -52,6 +53,30 @@ public class FlashcardSetController {
     ) {
         return flashcardSetService.createSet(
                 request,
+                authentication.getName()
+        );
+    }
+    @PutMapping("/{setId}")
+    public FlashcardSetResponse updateSet(
+            @PathVariable Long setId,
+            @Valid @RequestBody UpdateFlashcardSetRequest request,
+            Authentication authentication
+    ) {
+        return flashcardSetService.updateSet(
+                setId,
+                request,
+                authentication.getName()
+        );
+    }
+
+    @DeleteMapping("/{setId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSet(
+            @PathVariable Long setId,
+            Authentication authentication
+    ) {
+        flashcardSetService.deleteSet(
+                setId,
                 authentication.getName()
         );
     }

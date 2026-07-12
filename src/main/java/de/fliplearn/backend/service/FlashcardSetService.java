@@ -9,6 +9,7 @@ import de.fliplearn.backend.repository.AppUserRepository;
 import de.fliplearn.backend.repository.FlashcardSetRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import de.fliplearn.backend.dto.UpdateFlashcardSetRequest;
 
 import java.util.List;
 
@@ -124,5 +125,39 @@ public class FlashcardSetService {
         return normalized.isEmpty()
                 ? null
                 : normalized;
+    }
+
+    @Transactional
+    public FlashcardSetResponse updateSet(
+            Long setId,
+            UpdateFlashcardSetRequest request,
+            String email
+    ) {
+        FlashcardSet set = findOwnedSet(setId, email);
+
+        set.setTitle(request.title().trim());
+        set.setDescription(
+                normalizeNullable(request.description())
+        );
+        set.setFolder(
+                normalizeNullable(request.folder())
+        );
+        set.setColor(request.color());
+        set.setFavorite(request.favorite());
+
+        FlashcardSet savedSet =
+                flashcardSetRepository.save(set);
+
+        return toResponse(savedSet);
+    }
+
+    @Transactional
+    public void deleteSet(
+            Long setId,
+            String email
+    ) {
+        FlashcardSet set = findOwnedSet(setId, email);
+
+        flashcardSetRepository.delete(set);
     }
 }
