@@ -6,13 +6,25 @@ public record StatisticsOverviewResponse(
         long totalSets,
         long totalCards,
         long completedSessions,
+
         long totalReviews,
         long correctReviews,
         long incorrectReviews,
         int accuracy,
+
         long reviewsToday,
         long correctReviewsToday,
         int todayAccuracy,
-        List<DailyStudyActivityResponse> lastSevenDays
+
+        long reviewsThisWeek,
+        long correctReviewsThisWeek,
+        int weeklyAccuracy,
+        long weeklyStudyMinutes,
+        int currentStreak,
+
+        List<DailyStudyActivityResponse> lastSevenDays,
+        List<DailyStudyActivityResponse> studyCalendar,
+        List<SetAccuracyResponse> setAccuracies,
+        List<AchievementResponse> achievements
 ) {
 }
