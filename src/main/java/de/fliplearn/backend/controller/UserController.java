@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import de.fliplearn.backend.dto.UserProfileResponse;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -24,6 +26,15 @@ public class UserController {
             Authentication authentication
     ) {
         return userService.getCurrentUser(
+                authentication.getName()
+        );
+    }
+
+    @GetMapping("/profile")
+    public UserProfileResponse getProfile(
+            Authentication authentication
+    ) {
+        return userService.getProfile(
                 authentication.getName()
         );
     }

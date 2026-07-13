@@ -17,4 +17,12 @@ public interface FlashcardSetRepository
             Long id,
             String email
     );
+
+    long countByOwnerEmailIgnoreCase(
+            String email
+    );
+
+    long countByOwnerEmailIgnoreCaseAndFavoriteTrue(
+            String email
+    );
 }

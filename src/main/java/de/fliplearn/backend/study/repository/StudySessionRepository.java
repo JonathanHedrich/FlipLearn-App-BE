@@ -24,4 +24,8 @@ public interface StudySessionRepository
             Long sessionId,
             String email
     );
+
+    long countByUserEmailIgnoreCaseAndCompletedAtIsNotNull(
+            String email
+    );
 }

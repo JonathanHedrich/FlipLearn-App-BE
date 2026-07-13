@@ -20,6 +20,8 @@ import de.fliplearn.backend.study.repository.StudySessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import de.fliplearn.backend.study.entity.StudyMode;
+
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -77,11 +79,16 @@ public class StudyService {
                         )
                 );
 
-        List<Flashcard> cards = findDueCards(set.getId());
+        List<Flashcard> cards = findStudyCards(
+                set.getId(),
+                request.mode()
+        );
 
         if (cards.isEmpty()) {
             throw new ResourceConflictException(
-                    "Für dieses Lernset sind aktuell keine Karten fällig."
+                    request.mode() == StudyMode.DUE
+                            ? "Für dieses Lernset sind aktuell keine Karten fällig."
+                            : "Dieses Lernset enthält noch keine Karten."
             );
         }
 
@@ -98,6 +105,20 @@ public class StudyService {
                 savedSession,
                 cards
         );
+    }
+
+    private List<Flashcard> findStudyCards(
+            Long setId,
+            StudyMode mode
+    ) {
+        if (mode == StudyMode.ALL) {
+            return flashcardRepository
+                    .findAllByFlashcardSetIdOrderByCreatedAtAsc(
+                            setId
+                    );
+        }
+
+        return findDueCards(setId);
     }
 
     @Transactional
