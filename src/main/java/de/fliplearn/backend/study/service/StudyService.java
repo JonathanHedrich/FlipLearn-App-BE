@@ -214,16 +214,16 @@ public class StudyService {
 
         flashcardRepository.save(card);
 
+        int setProgress = calculateSessionProgress(session);
+
+        session.getFlashcardSet()
+                .setProgress(setProgress);
+
         if (
                 session.getAnsweredCards()
                         >= session.getTotalCards()
         ) {
             session.complete();
-
-            int progress = calculateAccuracy(session);
-
-            session.getFlashcardSet()
-                    .setProgress(progress);
         }
 
         studySessionRepository.save(session);
@@ -241,7 +241,8 @@ public class StudyService {
                 schedulingResult.nextReviewAt(),
                 session.isComplete(),
                 session.getCorrectAnswers(),
-                session.getIncorrectAnswers()
+                session.getIncorrectAnswers(),
+                setProgress
         );
     }
 
@@ -357,6 +358,23 @@ public class StudyService {
                         session.getCorrectAnswers()
                                 * 100.0f
                 ) / answered
+        );
+    }
+
+    private int calculateSessionProgress(
+            StudySession session
+    ) {
+        if (session.getTotalCards() <= 0) {
+            return 0;
+        }
+
+        return Math.min(
+                100,
+                Math.round(
+                        session.getAnsweredCards()
+                                * 100.0f
+                                / session.getTotalCards()
+                )
         );
     }
 }

@@ -18,6 +18,7 @@ public record StudyReviewResponse(
         OffsetDateTime nextReviewAt,
         boolean sessionComplete,
         int correctAnswers,
-        int incorrectAnswers
+        int incorrectAnswers,
+        int setProgress
 ) {
 }
