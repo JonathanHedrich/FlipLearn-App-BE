@@ -15,12 +15,12 @@ import de.fliplearn.backend.study.dto.StudySessionResponse;
 import de.fliplearn.backend.study.dto.SubmitReviewRequest;
 import de.fliplearn.backend.study.entity.StudyReview;
 import de.fliplearn.backend.study.entity.StudySession;
-import de.fliplearn.backend.study.repository.StudyReviewRepository;
 import de.fliplearn.backend.study.repository.StudySessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import de.fliplearn.backend.study.entity.StudyMode;
+import de.fliplearn.backend.study.repository.StudyReviewRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
