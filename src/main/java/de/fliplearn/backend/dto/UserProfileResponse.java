@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 public record UserProfileResponse(
         Long id,
         String displayName,
+        String username,
         String email,
         String role,
         OffsetDateTime memberSince,

@@ -97,6 +97,7 @@ public class UserService {
         return new UserProfileResponse(
                 user.getId(),
                 user.getDisplayName(),
+                user.getUsername(),
                 user.getEmail(),
                 user.getRole().name(),
                 user.getCreatedAt(),
