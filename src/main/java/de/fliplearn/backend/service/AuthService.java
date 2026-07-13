@@ -83,30 +83,41 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
-        String normalizedEmail = normalizeEmail(request.email());
+        String normalizedEmail =
+                normalizeEmail(request.email());
 
         AppUser user = appUserRepository
                 .findByEmailIgnoreCase(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+                .orElseThrow(
+                        InvalidCredentialsException::new
+                );
 
-        boolean passwordMatches = passwordEncoder.matches(
-                request.password(),
-                user.getPasswordHash()
-        );
+        boolean passwordMatches =
+                passwordEncoder.matches(
+                        request.password(),
+                        user.getPasswordHash()
+                );
 
-        if (!passwordMatches || !user.isEnabled()) {
+        if (
+                !passwordMatches ||
+                        !user.isEnabled()
+        ) {
             throw new InvalidCredentialsException();
         }
 
         String accessToken =
                 jwtService.generateAccessToken(user);
 
+        long expiresIn =
+                jwtService.getExpirationSeconds();
+
         return new LoginResponse(
                 accessToken,
                 "Bearer",
-                jwtService.getExpirationSeconds(),
+                expiresIn,
                 user.getId(),
                 user.getDisplayName(),
+                user.getUsername(),
                 user.getEmail(),
                 user.getRole().name()
         );

@@ -49,6 +49,7 @@ public class UserService {
         return new CurrentUserResponse(
                 user.getId(),
                 user.getDisplayName(),
+                user.getUsername(),
                 user.getEmail(),
                 user.getRole().name(),
                 user.isEnabled(),
@@ -203,6 +204,7 @@ public class UserService {
         return new CurrentUserResponse(
                 savedUser.getId(),
                 savedUser.getDisplayName(),
+                savedUser.getUsername(),
                 savedUser.getEmail(),
                 savedUser.getRole().name(),
                 savedUser.isEnabled(),
