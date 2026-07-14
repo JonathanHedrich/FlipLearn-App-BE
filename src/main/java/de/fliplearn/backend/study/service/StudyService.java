@@ -79,16 +79,18 @@ public class StudyService {
                         )
                 );
 
+        StudyMode mode = request.mode() != null
+                ? request.mode()
+                : StudyMode.ALL;
+
         List<Flashcard> cards = findStudyCards(
                 set.getId(),
-                request.mode()
+                mode
         );
 
         if (cards.isEmpty()) {
             throw new ResourceConflictException(
-                    request.mode() == StudyMode.DUE
-                            ? "Für dieses Lernset sind aktuell keine Karten fällig."
-                            : "Dieses Lernset enthält noch keine Karten."
+                    getEmptyModeMessage(mode)
             );
         }
 
@@ -103,7 +105,8 @@ public class StudyService {
 
         return toSessionResponse(
                 savedSession,
-                cards
+                cards,
+                mode
         );
     }
 
@@ -111,14 +114,78 @@ public class StudyService {
             Long setId,
             StudyMode mode
     ) {
-        if (mode == StudyMode.ALL) {
-            return flashcardRepository
-                    .findAllByFlashcardSetIdOrderByCreatedAtAsc(
-                            setId
-                    );
-        }
+        List<Flashcard> allCards =
+                flashcardRepository
+                        .findAllByFlashcardSetIdOrderByCreatedAtAsc(
+                                setId
+                        );
 
-        return findDueCards(setId);
+        return switch (mode) {
+            case ALL,
+                 MARATHON,
+                 LIGHTNING,
+                 EXAM ->
+                    allCards;
+
+            case RANDOM ->
+                    shuffledCopy(allCards);
+
+            case FAVORITES ->
+                    allCards.stream()
+                            .filter(Flashcard::isFavorite)
+                            .toList();
+
+            case DIFFICULT ->
+                    allCards.stream()
+                            .sorted(
+                                    java.util.Comparator
+                                            .comparingInt(
+                                                    Flashcard::getIntervalDays
+                                            )
+                                            .thenComparing(
+                                                    Flashcard::getCreatedAt
+                                            )
+                            )
+                            .toList();
+
+            case NEW_ONLY ->
+                    allCards.stream()
+                            .filter(
+                                    card ->
+                                            card.getRepetitions() == 0
+                                                    || card.getNextReviewAt() == null
+                            )
+                            .toList();
+
+            case DUE,
+                 DUE_ONLY ->
+                    findDueCards(setId);
+
+            case FAVORITES_DUE ->
+                    findDueCards(setId)
+                            .stream()
+                            .filter(Flashcard::isFavorite)
+                            .toList();
+
+            case WRONG_ONLY ->
+                    studyReviewRepository
+                            .findCardsWhoseLatestReviewWasIncorrect(
+                                    setId
+                            );
+        };
+    }
+
+    private List<Flashcard> shuffledCopy(
+            List<Flashcard> cards
+    ) {
+        List<Flashcard> shuffled =
+                new ArrayList<>(cards);
+
+        java.util.Collections.shuffle(
+                shuffled
+        );
+
+        return shuffled;
     }
 
     @Transactional
@@ -270,7 +337,8 @@ public class StudyService {
 
         return toSessionResponse(
                 session,
-                cards
+                cards,
+                StudyMode.ALL
         );
     }
 
@@ -310,7 +378,8 @@ public class StudyService {
 
     private StudySessionResponse toSessionResponse(
             StudySession session,
-            List<Flashcard> cards
+            List<Flashcard> cards,
+            StudyMode mode
     ) {
         List<StudyCardResponse> cardResponses =
                 cards.stream()
@@ -321,6 +390,7 @@ public class StudyService {
                 session.getId(),
                 session.getFlashcardSet().getId(),
                 session.getFlashcardSet().getTitle(),
+                mode,
                 session.getStartedAt(),
                 session.getTotalCards(),
                 session.getCorrectAnswers(),
@@ -376,5 +446,29 @@ public class StudyService {
                                 / session.getTotalCards()
                 )
         );
+    }
+
+    private String getEmptyModeMessage(
+            StudyMode mode
+    ) {
+        return switch (mode) {
+            case DUE, DUE_ONLY ->
+                    "Für dieses Lernset sind aktuell keine Karten fällig.";
+
+            case FAVORITES ->
+                    "Dieses Lernset enthält keine favorisierten Karten.";
+
+            case FAVORITES_DUE ->
+                    "Es gibt aktuell keine favorisierten und gleichzeitig fälligen Karten.";
+
+            case NEW_ONLY ->
+                    "Dieses Lernset enthält keine neuen Karten.";
+
+            case WRONG_ONLY ->
+                    "Es gibt aktuell keine zuletzt falsch beantworteten Karten.";
+
+            default ->
+                    "Dieses Lernset enthält keine Karten.";
+        };
     }
 }

@@ -6,12 +6,20 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import de.fliplearn.backend.entity.Flashcard;
+
 import java.time.OffsetDateTime;
 import java.util.List;
 import de.fliplearn.backend.statistics.repository.SetAccuracyProjection;
 
+import java.util.Optional;
+
 public interface StudyReviewRepository
         extends JpaRepository<StudyReview, Long> {
+
+    Optional<StudyReview> findFirstByCardIdOrderByReviewedAtDesc(
+            Long cardId
+    );
 
     List<StudyReview>
     findAllBySessionIdOrderByReviewedAtAsc(
@@ -106,5 +114,21 @@ public interface StudyReviewRepository
     )
     List<SetAccuracyProjection> findSetAccuracies(
             @Param("email") String email
+    );
+
+    @Query("""
+        SELECT sr.card
+        FROM StudyReview sr
+        WHERE sr.card.flashcardSet.id = :setId
+          AND sr.answeredCorrectly = false
+          AND sr.reviewedAt = (
+              SELECT MAX(latest.reviewedAt)
+              FROM StudyReview latest
+              WHERE latest.card.id = sr.card.id
+          )
+        ORDER BY sr.reviewedAt DESC
+        """)
+    List<Flashcard> findCardsWhoseLatestReviewWasIncorrect(
+            @Param("setId") Long setId
     );
 }
