@@ -25,8 +25,9 @@ import de.fliplearn.backend.study.repository.StudyReviewRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
+
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -85,7 +86,9 @@ public class StudyService {
 
         List<Flashcard> cards = findStudyCards(
                 set.getId(),
-                mode
+                mode,
+                request.sourceSessionId(),
+                email
         );
 
         if (cards.isEmpty()) {
@@ -112,7 +115,9 @@ public class StudyService {
 
     private List<Flashcard> findStudyCards(
             Long setId,
-            StudyMode mode
+            StudyMode mode,
+            Long sourceSessionId,
+            String email
     ) {
         List<Flashcard> allCards =
                 flashcardRepository
@@ -136,24 +141,15 @@ public class StudyService {
                             .toList();
 
             case DIFFICULT ->
-                    allCards.stream()
-                            .sorted(
-                                    java.util.Comparator
-                                            .comparingInt(
-                                                    Flashcard::getIntervalDays
-                                            )
-                                            .thenComparing(
-                                                    Flashcard::getCreatedAt
-                                            )
-                            )
-                            .toList();
+                    findDifficultCards(
+                            setId,
+                            allCards
+                    );
 
             case NEW_ONLY ->
                     allCards.stream()
-                            .filter(
-                                    card ->
-                                            card.getRepetitions() == 0
-                                                    || card.getNextReviewAt() == null
+                            .filter(card ->
+                                    card.getTotalReviews() == 0
                             )
                             .toList();
 
@@ -168,10 +164,11 @@ public class StudyService {
                             .toList();
 
             case WRONG_ONLY ->
-                    studyReviewRepository
-                            .findCardsWhoseLatestReviewWasIncorrect(
-                                    setId
-                            );
+                    findWrongCards(
+                            setId,
+                            sourceSessionId,
+                            email
+                    );
         };
     }
 
@@ -345,35 +342,71 @@ public class StudyService {
     private List<Flashcard> findDueCards(
             Long setId
     ) {
-        OffsetDateTime now = OffsetDateTime.now();
+        return flashcardRepository
+                .findAllByFlashcardSetIdAndNextReviewAtLessThanEqualOrderByNextReviewAtAsc(
+                        setId,
+                        OffsetDateTime.now()
+                );
+    }
 
-        List<Flashcard> newCards =
-                flashcardRepository
-                        .findAllByFlashcardSetIdAndNextReviewAtIsNullOrderByCreatedAtAsc(
-                                setId
+    private int compareDifficulty(
+            Flashcard first,
+            Flashcard second
+    ) {
+        boolean firstIsNew =
+                first.getTotalReviews() == 0;
+
+        boolean secondIsNew =
+                second.getTotalReviews() == 0;
+
+        if (firstIsNew != secondIsNew) {
+            return firstIsNew ? 1 : -1;
+        }
+
+        double firstAccuracy =
+                first.getTotalReviews() == 0
+                        ? 1.0
+                        : (double) first.getCorrectReviews()
+                        / first.getTotalReviews();
+
+        double secondAccuracy =
+                second.getTotalReviews() == 0
+                        ? 1.0
+                        : (double) second.getCorrectReviews()
+                        / second.getTotalReviews();
+
+        int accuracyComparison =
+                Double.compare(
+                        firstAccuracy,
+                        secondAccuracy
+                );
+
+        if (accuracyComparison != 0) {
+            return accuracyComparison;
+        }
+
+        int easeComparison =
+                first.getEaseFactor()
+                        .compareTo(
+                                second.getEaseFactor()
                         );
 
-        List<Flashcard> dueCards =
-                flashcardRepository
-                        .findAllByFlashcardSetIdAndNextReviewAtLessThanEqualOrderByNextReviewAtAsc(
-                                setId,
-                                now
-                        );
+        if (easeComparison != 0) {
+            return easeComparison;
+        }
 
-        Map<Long, Flashcard> uniqueCards =
-                new LinkedHashMap<>();
+        int intervalComparison =
+                Integer.compare(
+                        first.getIntervalDays(),
+                        second.getIntervalDays()
+                );
 
-        newCards.forEach(card ->
-                uniqueCards.put(card.getId(), card)
-        );
+        if (intervalComparison != 0) {
+            return intervalComparison;
+        }
 
-        dueCards.forEach(card ->
-                uniqueCards.put(card.getId(), card)
-        );
-
-        return new ArrayList<>(
-                uniqueCards.values()
-        );
+        return second.getUpdatedAt()
+                .compareTo(first.getUpdatedAt());
     }
 
     private StudySessionResponse toSessionResponse(
@@ -470,5 +503,94 @@ public class StudyService {
             default ->
                     "Dieses Lernset enthält keine Karten.";
         };
+    }
+
+    private List<Flashcard> findWrongCards(
+            Long setId,
+            Long sourceSessionId,
+            String email
+    ) {
+        if (sourceSessionId != null) {
+            StudySession sourceSession =
+                    studySessionRepository
+                            .findByIdAndUserEmailIgnoreCase(
+                                    sourceSessionId,
+                                    email
+                            )
+                            .orElseThrow(() ->
+                                    new ResourceNotFoundException(
+                                            "Die vorherige Marathon-Runde wurde nicht gefunden."
+                                    )
+                            );
+
+            if (
+                    !sourceSession
+                            .getFlashcardSet()
+                            .getId()
+                            .equals(setId)
+            ) {
+                throw new ResourceConflictException(
+                        "Die Marathon-Runde gehört zu einem anderen Lernset."
+                );
+            }
+
+            return studyReviewRepository
+                    .findIncorrectCardsBySessionId(
+                            sourceSessionId
+                    );
+        }
+
+        /*
+         * Normales Wrong Answers Only außerhalb
+         * eines Marathons.
+         */
+        return studyReviewRepository
+                .findCardsWhoseLatestReviewWasIncorrect(
+                        setId
+                );
+    }
+
+    private List<Flashcard> findDifficultCards(
+            Long setId,
+            List<Flashcard> allCards
+    ) {
+        List<Flashcard> lastAnsweredIncorrectly =
+                studyReviewRepository
+                        .findCardsWhoseLatestReviewWasIncorrect(
+                                setId
+                        );
+
+        Map<Long, Flashcard> orderedCards =
+                new LinkedHashMap<>();
+
+        /*
+         * Zuletzt falsch beantwortete Karten
+         * kommen immer zuerst.
+         */
+        lastAnsweredIncorrectly.stream()
+                .sorted(this::compareDifficulty)
+                .forEach(card ->
+                        orderedCards.put(
+                                card.getId(),
+                                card
+                        )
+                );
+
+        /*
+         * Danach folgen alle übrigen Karten,
+         * ebenfalls nach Schwierigkeit sortiert.
+         */
+        allCards.stream()
+                .sorted(this::compareDifficulty)
+                .forEach(card ->
+                        orderedCards.putIfAbsent(
+                                card.getId(),
+                                card
+                        )
+                );
+
+        return new ArrayList<>(
+                orderedCards.values()
+        );
     }
 }

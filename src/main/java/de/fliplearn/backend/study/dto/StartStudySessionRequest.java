@@ -11,7 +11,9 @@ public record StartStudySessionRequest(
         Long setId,
 
         @NotNull(message = "Der Lernmodus ist erforderlich.")
-        StudyMode mode
+        StudyMode mode,
+
+        Long sourceSessionId
 
 ) {
 }

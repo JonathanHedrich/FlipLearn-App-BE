@@ -131,4 +131,15 @@ public interface StudyReviewRepository
     List<Flashcard> findCardsWhoseLatestReviewWasIncorrect(
             @Param("setId") Long setId
     );
+
+    @Query("""
+        SELECT sr.card
+        FROM StudyReview sr
+        WHERE sr.session.id = :sessionId
+          AND sr.answeredCorrectly = false
+        ORDER BY sr.reviewedAt ASC
+        """)
+    List<Flashcard> findIncorrectCardsBySessionId(
+            @Param("sessionId") Long sessionId
+    );
 }
