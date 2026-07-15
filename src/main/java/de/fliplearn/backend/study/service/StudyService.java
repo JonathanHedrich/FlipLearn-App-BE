@@ -13,25 +13,37 @@ import de.fliplearn.backend.study.dto.StudyCardResponse;
 import de.fliplearn.backend.study.dto.StudyReviewResponse;
 import de.fliplearn.backend.study.dto.StudySessionResponse;
 import de.fliplearn.backend.study.dto.SubmitReviewRequest;
+import de.fliplearn.backend.study.entity.StudyMode;
 import de.fliplearn.backend.study.entity.StudyReview;
 import de.fliplearn.backend.study.entity.StudySession;
+import de.fliplearn.backend.study.repository.StudyReviewRepository;
 import de.fliplearn.backend.study.repository.StudySessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import de.fliplearn.backend.study.entity.StudyMode;
-import de.fliplearn.backend.study.repository.StudyReviewRepository;
-
 import java.math.BigDecimal;
+import java.time.DateTimeException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.List;
-
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class StudyService {
+
+    /*
+     * Maximales Wiederholungsintervall:
+     * ungefähr zehn Jahre.
+     *
+     * Dadurch können weder Integer-Überläufe noch
+     * Zeitstempel außerhalb des PostgreSQL-Bereichs
+     * gespeichert werden.
+     */
+    private static final int MAX_INTERVAL_DAYS = 3650;
+
+    private static final int MIN_INTERVAL_DAYS = 1;
 
     private final AppUserRepository appUserRepository;
     private final FlashcardSetRepository flashcardSetRepository;
@@ -178,9 +190,7 @@ public class StudyService {
         List<Flashcard> shuffled =
                 new ArrayList<>(cards);
 
-        java.util.Collections.shuffle(
-                shuffled
-        );
+        Collections.shuffle(shuffled);
 
         return shuffled;
     }
@@ -237,10 +247,14 @@ public class StudyService {
                 OffsetDateTime.now();
 
         int previousIntervalDays =
-                card.getIntervalDays();
+                sanitizePreviousInterval(
+                        card.getIntervalDays()
+                );
 
         BigDecimal previousEaseFactor =
-                card.getEaseFactor();
+                sanitizeEaseFactor(
+                        card.getEaseFactor()
+                );
 
         SchedulingResult schedulingResult =
                 spacedRepetitionService.calculate(
@@ -249,11 +263,43 @@ public class StudyService {
                         reviewedAt
                 );
 
+        /*
+         * Werte des Algorithmus niemals ungeprüft
+         * in der Datenbank speichern.
+         */
+        int safeIntervalDays =
+                sanitizeIntervalDays(
+                        schedulingResult.intervalDays()
+                );
+
+        int safeRepetitions =
+                Math.max(
+                        0,
+                        schedulingResult.repetitions()
+                );
+
+        BigDecimal safeEaseFactor =
+                sanitizeEaseFactor(
+                        schedulingResult.easeFactor()
+                );
+
+        /*
+         * nextReviewAt wird absichtlich neu berechnet.
+         *
+         * schedulingResult.nextReviewAt() könnte bereits
+         * aus einem übergelaufenen Intervall entstanden sein.
+         */
+        OffsetDateTime safeNextReviewAt =
+                calculateSafeNextReviewAt(
+                        reviewedAt,
+                        safeIntervalDays
+                );
+
         card.updateLearningState(
-                schedulingResult.easeFactor(),
-                schedulingResult.intervalDays(),
-                schedulingResult.repetitions(),
-                schedulingResult.nextReviewAt(),
+                safeEaseFactor,
+                safeIntervalDays,
+                safeRepetitions,
+                safeNextReviewAt,
                 reviewedAt,
                 schedulingResult.answeredCorrectly()
         );
@@ -268,17 +314,22 @@ public class StudyService {
                 request.rating(),
                 schedulingResult.answeredCorrectly(),
                 previousIntervalDays,
-                schedulingResult.intervalDays(),
+                safeIntervalDays,
                 previousEaseFactor,
-                schedulingResult.easeFactor()
+                safeEaseFactor
         );
+
+        /*
+         * Explizites Speichern der Karte vor dem Review
+         * sorgt für eine klarere Reihenfolge.
+         */
+        flashcardRepository.save(card);
 
         StudyReview savedReview =
                 studyReviewRepository.save(review);
 
-        flashcardRepository.save(card);
-
-        int setProgress = calculateSessionProgress(session);
+        int setProgress =
+                calculateSessionProgress(session);
 
         session.getFlashcardSet()
                 .setProgress(setProgress);
@@ -299,10 +350,10 @@ public class StudyService {
                 request.rating(),
                 schedulingResult.answeredCorrectly(),
                 previousIntervalDays,
-                schedulingResult.intervalDays(),
+                safeIntervalDays,
                 previousEaseFactor,
-                schedulingResult.easeFactor(),
-                schedulingResult.nextReviewAt(),
+                safeEaseFactor,
+                safeNextReviewAt,
                 session.isComplete(),
                 session.getCorrectAnswers(),
                 session.getIncorrectAnswers(),
@@ -359,6 +410,11 @@ public class StudyService {
         boolean secondIsNew =
                 second.getTotalReviews() == 0;
 
+        /*
+         * Bereits gelernte Karten werden vor komplett
+         * neuen Karten sortiert, weil für neue Karten
+         * noch keine Schwierigkeit ermittelt werden kann.
+         */
         if (firstIsNew != secondIsNew) {
             return firstIsNew ? 1 : -1;
         }
@@ -385,11 +441,20 @@ public class StudyService {
             return accuracyComparison;
         }
 
+        BigDecimal firstEaseFactor =
+                sanitizeEaseFactor(
+                        first.getEaseFactor()
+                );
+
+        BigDecimal secondEaseFactor =
+                sanitizeEaseFactor(
+                        second.getEaseFactor()
+                );
+
         int easeComparison =
-                first.getEaseFactor()
-                        .compareTo(
-                                second.getEaseFactor()
-                        );
+                firstEaseFactor.compareTo(
+                        secondEaseFactor
+                );
 
         if (easeComparison != 0) {
             return easeComparison;
@@ -397,16 +462,42 @@ public class StudyService {
 
         int intervalComparison =
                 Integer.compare(
-                        first.getIntervalDays(),
-                        second.getIntervalDays()
+                        sanitizeIntervalDays(
+                                first.getIntervalDays()
+                        ),
+                        sanitizeIntervalDays(
+                                second.getIntervalDays()
+                        )
                 );
 
         if (intervalComparison != 0) {
             return intervalComparison;
         }
 
-        return second.getUpdatedAt()
-                .compareTo(first.getUpdatedAt());
+        OffsetDateTime firstUpdatedAt =
+                first.getUpdatedAt();
+
+        OffsetDateTime secondUpdatedAt =
+                second.getUpdatedAt();
+
+        if (
+                firstUpdatedAt == null &&
+                        secondUpdatedAt == null
+        ) {
+            return 0;
+        }
+
+        if (firstUpdatedAt == null) {
+            return 1;
+        }
+
+        if (secondUpdatedAt == null) {
+            return -1;
+        }
+
+        return secondUpdatedAt.compareTo(
+                firstUpdatedAt
+        );
     }
 
     private StudySessionResponse toSessionResponse(
@@ -441,16 +532,24 @@ public class StudyService {
                 card.getFront(),
                 card.getBack(),
                 card.isFavorite(),
-                card.getIntervalDays(),
-                card.getRepetitions(),
-                card.getNextReviewAt()
+                sanitizeIntervalDaysForResponse(
+                        card.getIntervalDays()
+                ),
+                Math.max(
+                        0,
+                        card.getRepetitions()
+                ),
+                sanitizeNextReviewAtForResponse(
+                        card.getNextReviewAt()
+                )
         );
     }
 
     private int calculateAccuracy(
             StudySession session
     ) {
-        int answered = session.getAnsweredCards();
+        int answered =
+                session.getAnsweredCards();
 
         if (answered == 0) {
             return 0;
@@ -473,10 +572,13 @@ public class StudyService {
 
         return Math.min(
                 100,
-                Math.round(
-                        session.getAnsweredCards()
-                                * 100.0f
-                                / session.getTotalCards()
+                Math.max(
+                        0,
+                        Math.round(
+                                session.getAnsweredCards()
+                                        * 100.0f
+                                        / session.getTotalCards()
+                        )
                 )
         );
     }
@@ -592,5 +694,142 @@ public class StudyService {
         return new ArrayList<>(
                 orderedCards.values()
         );
+    }
+
+    /**
+     * Begrenzt das vom Lernalgorithmus berechnete
+     * Intervall auf einen sicheren Wertebereich.
+     */
+    private int sanitizeIntervalDays(
+            int intervalDays
+    ) {
+        if (intervalDays < MIN_INTERVAL_DAYS) {
+            return MIN_INTERVAL_DAYS;
+        }
+
+        return Math.min(
+                intervalDays,
+                MAX_INTERVAL_DAYS
+        );
+    }
+
+    /**
+     * Für bestehende Kartendaten darf ein Intervall
+     * von 0 weiterhin als "noch nicht geplant" gelten.
+     */
+    private int sanitizePreviousInterval(
+            int intervalDays
+    ) {
+        if (intervalDays < 0) {
+            return 0;
+        }
+
+        return Math.min(
+                intervalDays,
+                MAX_INTERVAL_DAYS
+        );
+    }
+
+    /**
+     * Für API-Antworten darf eine neue Karte weiterhin
+     * ein Intervall von 0 liefern.
+     */
+    private int sanitizeIntervalDaysForResponse(
+            int intervalDays
+    ) {
+        if (intervalDays < 0) {
+            return 0;
+        }
+
+        return Math.min(
+                intervalDays,
+                MAX_INTERVAL_DAYS
+        );
+    }
+
+    /**
+     * SM-2 verwendet üblicherweise mindestens 1.30.
+     * Zusätzlich wird der Ease Factor nach oben begrenzt,
+     * damit beschädigte Daten keine extremen Intervalle
+     * erzeugen.
+     */
+    private BigDecimal sanitizeEaseFactor(
+            BigDecimal easeFactor
+    ) {
+        BigDecimal minimum =
+                new BigDecimal("1.30");
+
+        BigDecimal maximum =
+                new BigDecimal("5.00");
+
+        BigDecimal fallback =
+                new BigDecimal("2.50");
+
+        if (easeFactor == null) {
+            return fallback;
+        }
+
+        if (easeFactor.compareTo(minimum) < 0) {
+            return minimum;
+        }
+
+        if (easeFactor.compareTo(maximum) > 0) {
+            return maximum;
+        }
+
+        return easeFactor;
+    }
+
+    /**
+     * Erstellt ausschließlich aus dem bereits begrenzten
+     * Intervall einen neuen sicheren Zeitstempel.
+     */
+    private OffsetDateTime calculateSafeNextReviewAt(
+            OffsetDateTime reviewedAt,
+            int intervalDays
+    ) {
+        OffsetDateTime safeBaseDate =
+                reviewedAt != null
+                        ? reviewedAt
+                        : OffsetDateTime.now();
+
+        int safeIntervalDays =
+                sanitizeIntervalDays(intervalDays);
+
+        try {
+            return safeBaseDate.plusDays(
+                    safeIntervalDays
+            );
+        } catch (DateTimeException exception) {
+            /*
+             * Sollte trotz aller Begrenzungen niemals
+             * auftreten. Als sichere Rückfalllösung wird
+             * die Karte am nächsten Tag fällig.
+             */
+            return OffsetDateTime.now()
+                    .plusDays(MIN_INTERVAL_DAYS);
+        }
+    }
+
+    /**
+     * Verhindert, dass bereits beschädigte Zeitstempel
+     * ungeprüft an den Client zurückgegeben werden.
+     */
+    private OffsetDateTime sanitizeNextReviewAtForResponse(
+            OffsetDateTime nextReviewAt
+    ) {
+        if (nextReviewAt == null) {
+            return null;
+        }
+
+        OffsetDateTime maximumAllowed =
+                OffsetDateTime.now()
+                        .plusDays(MAX_INTERVAL_DAYS);
+
+        if (nextReviewAt.isAfter(maximumAllowed)) {
+            return maximumAllowed;
+        }
+
+        return nextReviewAt;
     }
 }

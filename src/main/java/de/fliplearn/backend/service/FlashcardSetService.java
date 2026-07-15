@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import de.fliplearn.backend.dto.UpdateFlashcardSetRequest;
 
+import de.fliplearn.backend.category.entity.FlashcardCategory;
+import de.fliplearn.backend.category.repository.FlashcardCategoryRepository;
+
 import java.util.List;
 
 @Service
@@ -18,13 +21,16 @@ public class FlashcardSetService {
 
     private final FlashcardSetRepository flashcardSetRepository;
     private final AppUserRepository appUserRepository;
+    private final FlashcardCategoryRepository categoryRepository;
 
     public FlashcardSetService(
             FlashcardSetRepository flashcardSetRepository,
-            AppUserRepository appUserRepository
+            AppUserRepository appUserRepository,
+            FlashcardCategoryRepository categoryRepository
     ) {
         this.flashcardSetRepository = flashcardSetRepository;
         this.appUserRepository = appUserRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     @Transactional(readOnly = true)
@@ -69,9 +75,15 @@ public class FlashcardSetService {
         FlashcardSet set = new FlashcardSet(
                 owner,
                 request.title().trim(),
-                normalizeNullable(request.description()),
-                normalizeNullable(request.folder()),
+                request.description(),
                 request.color()
+        );
+
+        set.setCategory(
+                resolveCategory(
+                        email,
+                        request.categoryId()
+                )
         );
 
         FlashcardSet savedSet =
@@ -99,15 +111,18 @@ public class FlashcardSetService {
     private FlashcardSetResponse toResponse(
             FlashcardSet set
     ) {
+        FlashcardCategory category = set.getCategory();
+
         return new FlashcardSetResponse(
                 set.getId(),
                 set.getTitle(),
                 set.getDescription(),
-                set.getFolder(),
+                category != null ? category.getId() : null,
+                category != null ? category.getName() : null,
                 set.getColor(),
                 set.isFavorite(),
                 set.getProgress(),
-                set.getCards().size(),
+                set.getCardCount(),
                 set.getCreatedAt(),
                 set.getUpdatedAt()
         );
@@ -139,8 +154,11 @@ public class FlashcardSetService {
         set.setDescription(
                 normalizeNullable(request.description())
         );
-        set.setFolder(
-                normalizeNullable(request.folder())
+        set.setCategory(
+                resolveCategory(
+                        email,
+                        request.categoryId()
+                )
         );
         set.setColor(request.color());
         set.setFavorite(request.favorite());
@@ -159,5 +177,25 @@ public class FlashcardSetService {
         FlashcardSet set = findOwnedSet(setId, email);
 
         flashcardSetRepository.delete(set);
+    }
+
+    private FlashcardCategory resolveCategory(
+            String email,
+            Long categoryId
+    ) {
+        if (categoryId == null) {
+            return null;
+        }
+
+        return categoryRepository
+                .findByIdAndOwnerEmailIgnoreCase(
+                        categoryId,
+                        email
+                )
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Kategorie wurde nicht gefunden."
+                        )
+                );
     }
 }

@@ -20,11 +20,7 @@ public record UpdateFlashcardSetRequest(
         )
         String description,
 
-        @Size(
-                max = 100,
-                message = "Der Ordner darf höchstens 100 Zeichen lang sein."
-        )
-        String folder,
+        Long categoryId,
 
         @NotBlank(message = "Die Farbe darf nicht leer sein.")
         @Pattern(

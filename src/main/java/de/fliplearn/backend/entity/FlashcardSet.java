@@ -1,10 +1,13 @@
 package de.fliplearn.backend.entity;
 
 import jakarta.persistence.*;
+import de.fliplearn.backend.category.entity.FlashcardCategory;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
+import de.fliplearn.backend.category.entity.FlashcardCategory;
 
 @Entity
 @Table(name = "flashcard_sets")
@@ -33,12 +36,6 @@ public class FlashcardSet {
             length = 500
     )
     private String description;
-
-    @Column(
-            name = "folder",
-            length = 100
-    )
-    private String folder;
 
     @Column(
             name = "color",
@@ -82,17 +79,19 @@ public class FlashcardSet {
     protected FlashcardSet() {
     }
 
+    public int getCardCount() {
+        return cards.size();
+    }
+
     public FlashcardSet(
             AppUser owner,
             String title,
             String description,
-            String folder,
             String color
     ) {
         this.owner = owner;
         this.title = title;
         this.description = description;
-        this.folder = folder;
         this.color = color;
         this.favorite = false;
         this.progress = 0;
@@ -105,6 +104,10 @@ public class FlashcardSet {
         this.createdAt = now;
         this.updatedAt = now;
     }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private FlashcardCategory category;
 
     @PreUpdate
     void onUpdate() {
@@ -125,10 +128,6 @@ public class FlashcardSet {
 
     public String getDescription() {
         return description;
-    }
-
-    public String getFolder() {
-        return folder;
     }
 
     public String getColor() {
@@ -163,10 +162,6 @@ public class FlashcardSet {
         this.description = description;
     }
 
-    public void setFolder(String folder) {
-        this.folder = folder;
-    }
-
     public void setColor(String color) {
         this.color = color;
     }
@@ -177,5 +172,15 @@ public class FlashcardSet {
 
     public void setProgress(int progress) {
         this.progress = progress;
+    }
+
+    public FlashcardCategory getCategory() {
+        return category;
+    }
+
+    public void setCategory(
+            FlashcardCategory category
+    ) {
+        this.category = category;
     }
 }
