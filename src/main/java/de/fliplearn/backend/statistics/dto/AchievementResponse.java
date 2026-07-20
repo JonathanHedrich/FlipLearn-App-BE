@@ -1,13 +1,14 @@
 package de.fliplearn.backend.statistics.dto;
 
+import java.util.Map;
+
 public record AchievementResponse(
         String code,
-        String title,
-        String description,
         String icon,
         boolean earned,
         long currentValue,
         long targetValue,
-        int progress
+        int progress,
+        Map<String, Object> params
 ) {
 }
