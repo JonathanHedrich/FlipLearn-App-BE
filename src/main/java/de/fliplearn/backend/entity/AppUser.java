@@ -1,11 +1,30 @@
 package de.fliplearn.backend.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "app_users")
+@Table(
+        name = "app_users",
+        indexes = {
+                @Index(
+                        name = "idx_app_users_google_subject",
+                        columnList = "google_subject",
+                        unique = true
+                )
+        }
+)
 public class AppUser {
 
     @Id
@@ -30,7 +49,6 @@ public class AppUser {
 
     @Column(
             name = "password_hash",
-            nullable = false,
             length = 255
     )
     private String passwordHash;
@@ -49,6 +67,33 @@ public class AppUser {
             length = 30
     )
     private UserRole role = UserRole.USER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "auth_provider",
+            nullable = false,
+            length = 20
+    )
+    private AuthProvider authProvider = AuthProvider.LOCAL;
+
+    @Column(
+            name = "google_subject",
+            unique = true,
+            length = 255
+    )
+    private String googleSubject;
+
+    @Column(
+            name = "email_verified",
+            nullable = false
+    )
+    private boolean emailVerified;
+
+    @Column(
+            name = "profile_image_url",
+            length = 2048
+    )
+    private String profileImageUrl;
 
     @Column(
             name = "enabled",
@@ -83,7 +128,35 @@ public class AppUser {
         this.passwordHash = passwordHash;
         this.displayName = displayName;
         this.role = UserRole.USER;
+        this.authProvider = AuthProvider.LOCAL;
+        this.googleSubject = null;
+        this.emailVerified = false;
+        this.profileImageUrl = null;
         this.enabled = true;
+    }
+
+    public static AppUser createGoogleUser(
+            String email,
+            String username,
+            String displayName,
+            String googleSubject,
+            String profileImageUrl,
+            boolean emailVerified
+    ) {
+        AppUser user = new AppUser();
+
+        user.email = email;
+        user.username = username;
+        user.passwordHash = null;
+        user.displayName = displayName;
+        user.role = UserRole.USER;
+        user.authProvider = AuthProvider.GOOGLE;
+        user.googleSubject = googleSubject;
+        user.emailVerified = emailVerified;
+        user.profileImageUrl = profileImageUrl;
+        user.enabled = true;
+
+        return user;
     }
 
     @PrePersist
@@ -92,6 +165,14 @@ public class AppUser {
 
         this.createdAt = now;
         this.updatedAt = now;
+
+        if (this.role == null) {
+            this.role = UserRole.USER;
+        }
+
+        if (this.authProvider == null) {
+            this.authProvider = AuthProvider.LOCAL;
+        }
     }
 
     @PreUpdate
@@ -121,6 +202,22 @@ public class AppUser {
 
     public UserRole getRole() {
         return role;
+    }
+
+    public AuthProvider getAuthProvider() {
+        return authProvider;
+    }
+
+    public String getGoogleSubject() {
+        return googleSubject;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public String getProfileImageUrl() {
+        return profileImageUrl;
     }
 
     public boolean isEnabled() {
@@ -155,7 +252,59 @@ public class AppUser {
         this.role = role;
     }
 
+    public void setAuthProvider(AuthProvider authProvider) {
+        this.authProvider = authProvider;
+    }
+
+    public void setGoogleSubject(String googleSubject) {
+        this.googleSubject = googleSubject;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public void setProfileImageUrl(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
+    }
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean hasLocalPassword() {
+        return passwordHash != null && !passwordHash.isBlank();
+    }
+
+    public boolean isLocalAccount() {
+        return authProvider == AuthProvider.LOCAL;
+    }
+
+    public boolean isGoogleAccount() {
+        return authProvider == AuthProvider.GOOGLE;
+    }
+
+    public void linkGoogleAccount(
+            String googleSubject,
+            String profileImageUrl,
+            boolean emailVerified
+    ) {
+        this.googleSubject = googleSubject;
+        this.profileImageUrl = profileImageUrl;
+        this.emailVerified = emailVerified;
+        this.authProvider = AuthProvider.GOOGLE;
+    }
+
+    public void updateGoogleProfile(
+            String displayName,
+            String profileImageUrl,
+            boolean emailVerified
+    ) {
+        if (displayName != null && !displayName.isBlank()) {
+            this.displayName = displayName.trim();
+        }
+
+        this.profileImageUrl = profileImageUrl;
+        this.emailVerified = emailVerified;
     }
 }

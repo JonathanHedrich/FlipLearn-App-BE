@@ -12,7 +12,11 @@ public interface AppUserRepository
 
     Optional<AppUser> findByUsernameIgnoreCase(String username);
 
+    Optional<AppUser> findByGoogleSubject(String googleSubject);
+
     boolean existsByEmailIgnoreCase(String email);
 
     boolean existsByUsernameIgnoreCase(String username);
+
+    boolean existsByGoogleSubject(String googleSubject);
 }
