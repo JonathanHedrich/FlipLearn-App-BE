@@ -122,7 +122,12 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                List.of("http://localhost:8100")
+                List.of(
+                        "http://localhost:8100",
+                        "http://localhost",
+                        "https://localhost",
+                        "capacitor://localhost"
+                )
         );
 
         configuration.setAllowedMethods(
